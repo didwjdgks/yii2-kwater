@@ -21,6 +21,7 @@ class Http extends \yii\base\Component
         'Connection'=>'Keep-Alive',
       ],
     ]);
+    $this->client->get('/default_new.asp');
   }
 
   public static function sleep(){
@@ -32,8 +33,9 @@ class Http extends \yii\base\Component
     $res=$this->client->request($method,$uri,$options);
     $body=$res->getBody();
     $html=iconv('euckr','utf-8//IGNORE',$body);
-    $html=strip_tags($html,'<tr><td><a>');
+    $html=strip_tags($html,'<tr><td>');
     $html=preg_replace('/<td[^>]*>/','<td>',$html);
+    $html=preg_replace('/<tr[^>]*>/','<tr>',$html);
     $html=str_replace('&nbsp;','',$html);
     return $html;
   }
