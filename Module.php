@@ -6,6 +6,8 @@ use yii\di\Instance;
 
 class Module extends \yii\base\Module
 {
+  const WHEREIS='07';
+
   public $db='i2db';
 
   public $gman_server;

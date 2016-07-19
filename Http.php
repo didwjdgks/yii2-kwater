@@ -33,15 +33,16 @@ class Http extends \yii\base\Component
     $res=$this->client->request($method,$uri,$options);
     $body=$res->getBody();
     $html=iconv('euckr','utf-8//IGNORE',$body);
+    return $html;
+  }
+
+  public function get($uri,array $options=[]){
+    $html=$this->request('GET',$uri,$options);
     $html=strip_tags($html,'<tr><td>');
     $html=preg_replace('/<td[^>]*>/','<td>',$html);
     $html=preg_replace('/<tr[^>]*>/','<tr>',$html);
     $html=str_replace('&nbsp;','',$html);
     return $html;
-  }
-
-  public function get($uri,array $options=[]){
-    return $this->request('GET',$uri,$options);
   }
 }
 

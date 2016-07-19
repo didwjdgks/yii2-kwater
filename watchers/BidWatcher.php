@@ -1,7 +1,6 @@
 <?php
 namespace kwater\watchers;
 
-use Exception;
 use kwater\WatchEvent;
 
 class BidWatcher extends \yii\base\Component
@@ -31,7 +30,7 @@ class BidWatcher extends \yii\base\Component
       if(preg_match('#\[현재/전체페이지: \d+/(?<total_page>\d+)\]#',$html,$m)){
         $total_page=intval($m['total_page']);
       }
-      if(!$total_page){ throw new Exception('total_page not found!'); }
+      if(!$total_page){ throw new \Exception('total_page not found!'); }
 
       for($page=1; $page<=$total_page; $page++){
         if($page>1){
@@ -78,7 +77,7 @@ class BidWatcher extends \yii\base\Component
         \kwater\Http::sleep();
       }
     }
-    catch(Exception $e){
+    catch(\Exception $e){
       throw $e;
     }
   }

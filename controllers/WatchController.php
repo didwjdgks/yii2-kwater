@@ -2,12 +2,23 @@
 namespace kwater\controllers;
 
 use yii\helpers\Console;
+use yii\helpers\ArrayHelper;
+use yii\helpers\Json;
 
 use kwater\WatchEvent;
 use kwater\watchers\BidWatcher;
+use kwater\models\BidKey;
+use kwater\models\BidModifyCheck;
 
 class WatchController extends \yii\console\Controller
 {
+  private $gman_client;
+
+  public function init(){
+    $this->gman_client=new \GearmanClient;
+    $this->gman_client->addServers($this->module->gman_server);
+  }
+
   public function actionBid(){
     $bidWatcher=new BidWatcher;
     $bidWatcher->on(WatchEvent::EVENT_ROW,[$this,'onRow']);
@@ -15,10 +26,12 @@ class WatchController extends \yii\console\Controller
     while(true){
       try {
         $bidWatcher->watch();
+
+        $this->module->db->close();
       }
-      catch(Exception $e){
+      catch(\Exception $e){
         $this->stdout($e.PHP_EOL,Console::FG_RED);
-        Yii::error($e,'kwater');
+        \Yii::error($e,'kwater');
       }
       $this->stdout(sprintf("[%s] Peak memory usage: %s MB\n",
         date('Y-m-d H:i:s'),
@@ -31,7 +44,39 @@ class WatchController extends \yii\console\Controller
 
   public function onRow($event){
     $row=$event->row;
-    $this->stdout(implode(',',$row)."\n");
+    $out[]="[KWATER] [{$row['bidtype']}] %g{$row['notinum']}%n {$row['constnm']} ({$row['contract']},{$row['status']})";
+
+    $bidkey=BidKey::find()->where([
+      'whereis'=>\kwater\Module::WHEREIS,
+      'notinum'=>$row['notinum'],
+    ])->orderBy('bidid desc')->limit(1)->one();
+    if($bidkey===null){
+      if(!ArrayHelper::isIn($row['status'],['입찰완료','적격신청','결과발표']) and
+         !ArrayHelper::isIn($row['contract'],['지명경쟁','수의계약(시담)'])){
+        $out[]="%rNEW%n";
+        $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+        sleep(3);
+      }
+    }else{
+      $out[]="({$bidkey->bidproc})";
+      if($bidkey->bidproc==='B' and $bidkey->state==='Y'){
+        $bidcheck=BidModifyCheck::findOne($bidkey->bidid);
+        if($bidcheck===null){
+          $out[]="%yCHECK%n";
+          $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+        }else{
+          $diff=time()-$bidcheck->check_at;
+          if($diff>=60*60*1){
+            $out[]="%yCHECK%n";
+            $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+            $bidcheck->check_at=time();
+            $bidcheck->save();
+            sleep(5);
+          }
+        }
+      }
+    }
+    $this->stdout(Console::renderColoredString(join(' ',$out)).PHP_EOL);
   }
 }
 
