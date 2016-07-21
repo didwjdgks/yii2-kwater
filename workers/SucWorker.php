@@ -5,6 +5,8 @@ use yii\helpers\Json;
 use yii\helpers\ArrayHelper;
 use yii\helpers\Console;
 
+use kwater\WatchEvent;
+
 class SucWorker extends \yii\base\Component
 {
   const URL='/SrcWeb/BD/FZBD3030.asp';
@@ -17,11 +19,24 @@ class SucWorker extends \yii\base\Component
   }
 
   public function work($job){
-    echo $job->workload(),PHP_EOL;
+    \Yii::info('suc worker workload '.$job->workload(),'kwater');
     $workload=Json::decode($job->workload());
 
     $http=$this->module->http;
     $data=[];
+
+    if($workload['status']=='유찰'){
+      $event=new WatchEvent;
+      $event->row=[
+        'notinum'=>$workload['notinum'],
+        'bidproc'=>'F',
+      ];
+      $this->trigger(WatchEvent::EVENT_ROW,$event);
+      return;
+    }
+
+    $data['notinum']=$workload['notinum'];
+    $data['bidproc']='S';
 
     try{
       $html=$http->request('GET',static::URL_M,['query'=>['BidNo'=>$workload['notinum']]]);
@@ -29,6 +44,7 @@ class SucWorker extends \yii\base\Component
       $html=preg_replace('/<tr[^>]*>/','<tr>',$html);
       $html=preg_replace('/<td[^>]*>/','<td>',$html);
       $html=str_replace('&nbsp;',' ',$html);
+      \Yii::info($workload['notinum']."\n$html",'kwater');
       //추첨번호
       $p='/추첨된번호: (?<no>\d{1,2}) 번/';
       $p=str_replace(' ','\s*',$p);
@@ -39,6 +55,7 @@ class SucWorker extends \yii\base\Component
         }
         sort($selms);
         $data['selms']=join('|',$selms);
+        if(count($selms)==1) $data['selms']='';
       }
 
       //개찰결과
@@ -47,7 +64,6 @@ class SucWorker extends \yii\base\Component
       $html=preg_replace('/<tr[^>]*>/','<tr>',$html);
       $html=preg_replace('/<td[^>]*>/','<td>',$html);
       $html=str_replace('&nbsp;',' ',$html);
-      echo $html;
       $p='#<tr> <td>예정가격</td>( <td>[^<]*</td>){2} </tr>'.
          ' <tr> <tr> <td> (?<yega>\d{1,3}(,\d{3})*) 원 </td>( <td>[^<]*</td>){2} </tr>#';
       $p=str_replace(' ','\s*',$p);
@@ -93,15 +109,28 @@ class SucWorker extends \yii\base\Component
         }
       }
 
-      $i=1;
-      foreach($s_plus as $seq){
-        $succoms[$seq]['rank']=$i;
-        $i++;
-      }
-      $i=count($s_minus)*-1;
-      foreach($s_minus as $seq){
-        $succoms[$seq]['rank']=$i;
-        $i++;
+      //최저가
+      if(empty($s_plus)){
+        $i=1;
+        foreach($s_minus as $seq){
+          $succoms[$seq]['rank']=$i;
+          if($i==1){
+            $data['success1']=$succoms[$seq]['success'];
+            $data['officenm1']=$succoms[$seq]['officenm1'];
+          }
+          $i++;
+        }
+      }else{
+        $i=1;
+        foreach($s_plus as $seq){
+          $succoms[$seq]['rank']=$i;
+          $i++;
+        }
+        $i=count($s_minus)*-1;
+        foreach($s_minus as $seq){
+          $succoms[$seq]['rank']=$i;
+          $i++;
+        }
       }
       $data['succoms']=$succoms;
       $data['innum']=count($succoms);

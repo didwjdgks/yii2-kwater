@@ -62,6 +62,7 @@ class WatchController extends \yii\console\Controller
       $out[]="({$bidkey->bidproc})";
       if(!ArrayHelper::isIn($bidkey->bidproc,['F','S'])){
         $out[]="%gNEW%n";
+        $this->gman_client->doBackground('kwater_work_suc',Json::encode($row));
         $sleep=5;
       }
     }

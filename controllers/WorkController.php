@@ -151,7 +151,84 @@ class WorkController extends \yii\console\Controller
   }
 
   public function onSucData($event){
-    print_r($event->row);
+    $row=$event->row;
+    \Yii::info('['.__METHOD__.'] $row '.VarDumper::dumpAsString($row),'kwater');
+    $this->stdout(Console::renderColoredString(
+      "[KWATER] %g{$row['notinum']}%n {$row['constnm']} ({$row['status']})\n"
+    ));
+
+    try{
+      $bidkey=BidKey::find()->where([
+        'whereis'=>'07',
+        'notinum'=>$row['notinum'],
+      ])->orderBy('bidid desc')->limit(1)->one();
+      if($bidkey===null){
+        $this->stdout(" > 입찰공고가 없습니다.\n",Console::FG_RED);
+        return;
+      }
+      $bidvalue=BidValue::findOne($bidkey->bidid);
+      if($bidvalue===null){
+        throw new \Exception('bid_value is empty');
+      }
+
+      $bidres=BidRes::findOne($bidkey->bidid);
+      if($bidres===null){
+        $bidres=new BidRes([
+          'bidid'=>$bidkey->bidid,
+        ]);
+      }
+
+      BidSuccom::deleteAll(['bidid'=>$bidkey->bidid]);
+
+      if($row['bidproc']=='F'){
+        $bidres->yega=0;
+        $bidres->selms='';
+        $bidres->multispare='';
+        $bidres->officenm1='유찰';
+        $bidres->reswdt=date('Y-m-d H:i:s');
+        $bidres->save();
+
+        $bidkey->bidproc='F';
+        $bidkey->resdt=date('Y-m-d H:i:s');
+        $bidkey->editdt=date('Y-m-d H:i:s');
+        $bidkey->save();
+        return;
+      }
+
+      $bidres->yega=$row['yega'];
+      $bidres->innum=$row['innum'];
+      $bidres->selms=$row['selms'];
+      $bidres->multispare=$bidvalue->multispare;
+      $bidres->save();
+
+      Console::startProgress(0,$row['innum']);
+      foreach($row['succoms'] as $succom){
+        $bidsuccom=new BidSuccom([
+          'bidid'=>$bidkey->bidid,
+          'seq'=>$succom['seq'],
+          'officeno'=>'',
+          'officenm'=>$succom['officenm'],
+          'prenm'=>'',
+          'success'=>$succom['success'],
+          'pct'=>$succom['pct'],
+          'rank'=>$succom['rank'],
+          'selms'=>'',
+          'etc'=>$succom['etc'],
+        ]);
+        $bidsuccom->save();
+        Console::updateProgress($succom['seq'],$row['innum']);
+      }
+      Console::endProgress();
+
+      $bidkey->bidproc='S';
+      $bidkey->resdt=date('Y-m-d H:i:s');
+      $bidkey->editdt=date('Y-m-d H:i:s');
+      $bidkey->save();
+
+    }catch(\Exception $e){
+      $this->stdout("$e\n",Console::FG_RED);
+      \Yii::error($e,'kwater');
+    }
   }
 }
 
