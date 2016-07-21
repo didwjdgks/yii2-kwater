@@ -4,6 +4,7 @@ namespace kwater\workers;
 use yii\helpers\Json;
 use yii\helpers\Console;
 use yii\helpers\ArrayHelper;
+use yii\helpers\VarDumper;
 
 class BidWorker extends \yii\base\Component
 {
@@ -16,15 +17,17 @@ class BidWorker extends \yii\base\Component
   }
 
   public function work($job){
+    \Yii::info('['.__METHOD__.'] $workload'.PHP_EOL.VarDumper::dumpAsString($job->workload()),'kwater');
     $workload=Json::decode($job->workload());
-    echo $job->workload(),PHP_EOL;
-
     $http=new \kwater\Http;
     $data=[];
 
     try {
       if(empty($workload['notinum'])) throw new \Exception('notinum is empty');
       if(empty($workload['bidtype'])) throw new \Exception('bidtype is empty');
+
+      $data['org_i']='한국수자원공사';
+      if($workload['realorg']) $data['org_i'].=' '.str_replace('관리처','지역본부',$workload['realorg']);
 
       $data['notinum']=$workload['notinum'];
       switch($workload['bidtype']){
@@ -69,7 +72,6 @@ class BidWorker extends \yii\base\Component
       //$data['bidcomment']=$this->bidcomment($thml);
       $data['charger']=$this->charger($html);
       $data=ArrayHelper::merge($data,$this->closedt($html));
-      $data=ArrayHelper::merge($data,$this->convention($html));
       $convention=$this->convention($html);
       $data['convention']='0';
       if(ArrayHelper::isIn($convention['convention1'],['가능','공동'])){

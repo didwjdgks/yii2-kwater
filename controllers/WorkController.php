@@ -1,6 +1,9 @@
 <?php
 namespace kwater\controllers;
 
+use yii\helpers\Console;
+use yii\helpers\VarDumper;
+
 use GearmanWorker;
 use kwater\workers\BidWorker;
 use kwater\workers\SucWorker;
@@ -9,9 +12,20 @@ use kwater\models\BidKey;
 use kwater\models\BidValue;
 use kwater\models\BidContent;
 use kwater\models\BidModifyCheck;
+use kwater\models\BidRes;
+use kwater\models\BidSuccom;
+use kwater\models\CodeOrgI;
 
 class WorkController extends \yii\console\Controller
 {
+  private $gman_client;
+
+  public function init(){
+    parent::init();
+    $gman_client=new \GearmanClient;
+    $gman_client->addServers('115.168.48.242');
+  }
+
   public function actionBid(){
     $bid=new BidWorker;
     $bid->on(\kwater\WatchEvent::EVENT_ROW,[$this,'onBidData']);
@@ -23,82 +37,104 @@ class WorkController extends \yii\console\Controller
   }
 
   public function onBidData($event){
-    print_r($event->row);
     $row=$event->row;
+    \Yii::info('['.__METHOD__.'] $row'.PHP_EOL.VarDumper::dumpAsString($row),'kwater');
+    $this->stdout(Console::renderColoredString(
+      "[KWATER] %g{$row['notinum']}%n [{$row['bidtype']}] {$row['constnm']} \n"
+    ));
 
-    $bidkey=BidKey::find()->where([
-      'whereis'=>\kwater\Module::WHEREIS,
-      'notinum'=>$row['notinum'],
-    ])->orderBy('bidid desc')->limit(1)->one();
-    
-    if($bidkey===null){
-      //------------------------------------
-      // bid data save
-      //------------------------------------
-      $bidkey=new BidKey;
-      $bidkey->bidid=date('ymd').'K'.str_replace('-','',$row['notinum']).'-00-00-01';
-      $bidkey->notinum=$row['notinum'];
-      $bidkey->whereis=\kwater\Module::WHEREIS;
-      $bidkey->bidtype=$row['bidtype'];
-      $bidkey->bidview=$row['bidview'];
-      $bidkey->constnm=$row['constnm'];
-      $bidkey->succls=$row['succls'];
-      $bidkey->noticedt=$row['noticedt'];
-      $bidkey->basic=$row['basic'];
-      $bidkey->contract=$row['contract'];
-      $bidkey->registdt=$row['registdt'];
-      $bidkey->opendt=$row['opendt'];
-      $bidkey->closedt=$row['closedt'];
-      $bidkey->constdt=$row['constdt'];
-      $bidkey->pqdt=$row['pqdt'];
-      $bidkey->convention=$row['convention'];
-      $bidkey->state='N';
-      $bidkey->bidproc='B';
-      $bidkey->writedt=date('Y-m-d H:i:s');
-      $bidkey->editdt=date('Y-m-d H:i:s');
-      $bidkey->save();
+    try{
+      $bidkey=BidKey::find()->where([
+        'whereis'=>\kwater\Module::WHEREIS,
+        'notinum'=>$row['notinum'],
+      ])->orderBy('bidid desc')->limit(1)->one();
+      
+      if($bidkey===null){
+        //------------------------------------
+        // bid data save
+        //------------------------------------
+        $bidkey=new BidKey;
+        $bidkey->bidid=date('ymd').'K'.str_replace('-','',$row['notinum']).'-00-00-01';
+        $bidkey->notinum=$row['notinum'];
+        $bidkey->whereis=\kwater\Module::WHEREIS;
+        $bidkey->bidtype=$row['bidtype'];
+        $bidkey->bidview=$row['bidview'];
+        $bidkey->constnm=$row['constnm'];
+        $bidkey->succls=$row['succls'];
+        $bidkey->noticedt=$row['noticedt'];
+        $bidkey->basic=$row['basic'];
+        $bidkey->contract=$row['contract'];
+        $bidkey->registdt=$row['registdt'];
+        $bidkey->opendt=$row['opendt'];
+        $bidkey->closedt=$row['closedt'];
+        $bidkey->constdt=$row['constdt'];
+        $bidkey->pqdt=$row['pqdt'];
+        $bidkey->convention=$row['convention'];
+        $bidkey->state='N';
+        $bidkey->bidproc='B';
+        $bidkey->writedt=date('Y-m-d H:i:s');
+        $bidkey->editdt=date('Y-m-d H:i:s');
+        $bidkey->org_i=$row['org_i'];
+        $codeorg=CodeOrgI::findByOrgname($bidkey->org_i);
+        if($codeorg!==null){
+          $bidkey->orgcode_i=$codeorg->org_Scode;
+        }
+        $bidkey->save();
 
-      $bidvalue=new BidValue;
-      $bidvalue->bidid=$bidkey->bidid;
-      $bidvalue->yegatype='25';
-      $bidvalue->yegarng='-2.5|2.5';
-      $bidvalue->charger=$row['charger'];
-      $bidvalue->multispare=$row['multispare'];
-      //$bidvalue->save();
+        $bidvalue=new BidValue;
+        $bidvalue->bidid=$bidkey->bidid;
+        $bidvalue->yegatype='25';
+        $bidvalue->yegarng='-2.5|2.5';
+        $bidvalue->charger=$row['charger'];
+        $bidvalue->multispare=$row['multispare'];
+        $bidvalue->save();
 
-      $bidcontent=new BidContent;
-      $bidcontent->bidid=$bidkey->bidid;
-      $bidcontent->orign_lnk='http://ebid.kwater.or.kr/fz?bidno='.$row['notinum'];
-      $bidcontent->attchd_lnk=$row['attchd_lnk'];
-      $bidcontent->bidcomment=$row['bidcomment'];
-      //$bidcontent->save();
-    }
+        $bidcontent=new BidContent;
+        $bidcontent->bidid=$bidkey->bidid;
+        $bidcontent->orign_lnk='http://ebid.kwater.or.kr/fz?bidno='.$row['notinum'];
+        $bidcontent->attchd_lnk=$row['attchd_lnk'];
+        $bidcontent->bidcomment=$row['bidcomment'];
+        $bidcontent->save();
+      }
 
-    //-------------------------------
-    // check bid modified
-    //-------------------------------
-    $bidcheck=BidModifyCheck::findOne($bidkey->bidid);
-    if($bidcheck===null){
-      $bidcheck=new BidModifyCheck([
-        'bidid'=>$bidkey->bidid,
-      ]);
+      //-------------------------------
+      // check bid modified
+      //-------------------------------
+      $bidcheck=BidModifyCheck::findOne($bidkey->bidid);
+      if($bidcheck===null){
+        $bidcheck=new BidModifyCheck([
+          'bidid'=>$bidkey->bidid,
+        ]);
+      }
+      $bid_hash=md5(join('',$row));
+      $noticeDoc=BidFile::findNoticeDoc($row['attchd_lnk']);
+      if($noticeDoc!==null && $noticeDoc->download()){
+        $file_hash=md5_file($noticeDoc->saveDir.'/'.$noticeDoc->savedName);
+        $noticeDoc->remove();
+      }
+      if(!empty($bidcheck->bid_hash) and $bidcheck->bid_hash!=$bid_hash){
+        $this->stdout(" > check : bid_hash diff\n",Console::FG_RED);
+        $this->sendMessage("수자원공사 공고정보 확인필요! [{$row['notinum']}]");
+      }
+      else if(!empty($bidcheck->file_hash) and $bidcheck->file_hash!=$file_hash){
+        $this->stdout(" > check : file_hash diff\n",Console::FG_RED);
+        $this->sendMessage("수자원공사 공고원문 확인필요! [{$row['notinum']}]");
+      }
+      $bidcheck->bid_hash=$bid_hash;
+      $bidcheck->file_hash=$file_hash;
+      $bidcheck->check_at=time();
+      $bidcheck->save();
+    }catch(\Exception $e){
+      $this->stdout("$e\n",Console::FG_RED);
+      \Yii::error($e,'kwater');
     }
-    $bid_hash=md5(join('',$row));
-    $noticeDoc=BidFile::findNoticeDoc($row['attchd_lnk']);
-    if($noticeDoc!==null && $noticeDoc->download()){
-      $file_hash=md5_file($noticeDoc->saveDir.'/'.$noticeDoc->savedName);
-      $noticeDoc->remove();
-    }
-    if(!empty($bidcheck->bid_hash) and $bidcheck->bid_hash!=$bid_hash){
-      $this->stdout(" %r> check : bid_hash diff%n\n");
-    }
-    else if(!empty($bidcheck->file_hash) and $bidcheck->file_hash!=$file_hash){
-      $this->stdout(" %r> check : file_hash diff%n\n");
-    }
-    $bidcheck->bid_hash=$bid_hash;
-    $bidcheck->file_hash=$file_hash;
-    $bidcheck->check_at=time();
-    $bidcheck->save();
+  }
+
+  public function sendMessage($msg){
+    $gman_client->doBackground('send_chat_message_from_admin',Json::encode([
+      'recv_id'=>149,
+      'message'=>$msg,
+    ]));
   }
 
   /**

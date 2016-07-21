@@ -108,7 +108,7 @@ class WatchController extends \yii\console\Controller
       if(!ArrayHelper::isIn($row['status'],['입찰완료','적격신청','결과발표']) and
          !ArrayHelper::isIn($row['contract'],['지명경쟁','수의계약(시담)'])){
         $out[]="%rNEW%n";
-        //$this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+        $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
         $sleep=1;
       }
     }else{
@@ -117,12 +117,12 @@ class WatchController extends \yii\console\Controller
         $bidcheck=BidModifyCheck::findOne($bidkey->bidid);
         if($bidcheck===null){
           $out[]="%yCHECK%n";
-          //$this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+          $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
         }else{
           $diff=time()-$bidcheck->check_at;
           if($diff>=60*60*1){
             $out[]="%yCHECK%n";
-            //$this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
+            $this->gman_client->doBackground('kwater_work_bid',Json::encode($row));
             $bidcheck->check_at=time();
             $bidcheck->save();
             $sleep=1;
