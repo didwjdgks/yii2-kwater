@@ -23,6 +23,23 @@ class BidWorker extends \yii\base\Component
     $data=[];
 
     try {
+      if(empty($workload['notinum'])) throw new \Exception('notinum is empty');
+      if(empty($workload['bidtype'])) throw new \Exception('bidtype is empty');
+
+      $data['notinum']=$workload['notinum'];
+      switch($workload['bidtype']){
+        case '공사':
+          $data['bidtype']='con';
+          $data['bidview']='con';
+          break;
+        case '용역':
+          $data['bidtype']='ser';
+          $data['bidview']='ser';
+          break;
+        default:
+          $data['bidtype']='pur';
+          $data['bidview']='pur';
+      }
       $html=$http->request('GET',static::URL,[
         'query'=>[
           'BidNo'=>$workload['notinum'],
@@ -35,18 +52,42 @@ class BidWorker extends \yii\base\Component
       $data['attchd_lnk']=$this->attchd_lnk($html);
       $html=strip_tags($html,'<tr><td>');
       //echo $html,PHP_EOL;
-      $data['notinum']=$workload['notinum'];
       $data['constnm']=$this->constnm($html);
-      $data['contract']=$this->contract($html);
-      $data['succls']=$this->succls($html);
+      $contract=$this->contract($html);
+      if($contract=='소액전자'){
+        $data['contract']='40';
+      }
+      $succls=$this->succls($html);
+      switch($succls){
+        case '적격심사': $data['succls']='01'; break;
+        case '최저가': $data['succls']='02'; break;
+        default: $data['succls']='00';
+      }
       $data['registdt']=$this->registdt($html);
       $data['multispare']=$this->multispare($html);
       $data['constdt']=$this->constdt($html);
-      $data['bidcomment']=$this->bidcomment($thml);
+      //$data['bidcomment']=$this->bidcomment($thml);
       $data['charger']=$this->charger($html);
       $data=ArrayHelper::merge($data,$this->closedt($html));
       $data=ArrayHelper::merge($data,$this->convention($html));
+      $convention=$this->convention($html);
+      $data['convention']='0';
+      if(ArrayHelper::isIn($convention['convention1'],['가능','공동'])){
+        $data['convention']='2';
+      }
+      if(ArrayHelper::isIn($convention['convention2'],['가능','공동'])){
+        $data['convention']='2';
+      }
       $data['orign_lnk']='http://ebid.kwater.or.kr/fz?bidno='.$workload['notinum'];
+      $data['noticedt']=$this->noticedt($html);
+      $data['basic']=$this->basic($html);
+      $data['pqdt']=$this->pqdt($html);
+      //현장설명회
+      if($data['pqdt']){
+        $data['bidcomment']='PQ심사신청서 신청기한 : '.$data['pqdt'].'<hr>';
+        $data['succls']='05';
+      }
+
 
       $event=new \kwater\WatchEvent;
       $event->row=$data;
@@ -79,6 +120,24 @@ class BidWorker extends \yii\base\Component
       }
     }
     return $ret;
+  }
+
+  public function basic($html){
+    $p='#<td>발주금액</td> <td>(?<basic>\d{1,3}(,\d{3})*)원 </td>#';
+    $s=static::match($p,$html,'basic');
+    return str_replace(',','',$s);
+  }
+
+  public function noticedt($html){
+    $p='#<td> 입찰공고 </td> <td>(?<noticedt>[^<]*)</td> <td>[^<]*</td>#';
+    $s=static::match($p,$html,'noticedt');
+    return $s;
+  }
+
+  public function pqdt($html){
+    $p='#<td> PQ평가심사신청 </td> <td>[^<]*</td> <td>(?<pqdt>[^<]*)</td>#';
+    $s=static::match($p,$html,'pqdt');
+    return $s;
   }
 
   public function closedt($html){
